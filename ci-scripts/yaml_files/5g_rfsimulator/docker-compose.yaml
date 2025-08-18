@@ -129,6 +129,9 @@ services:
         networks:
             public_net:
                 ipv4_address: 192.168.71.150
+        dns:
+            - 8.8.8.8
+            - 1.1.1.1        
         devices:
              - /dev/net/tun:/dev/net/tun
         volumes:
@@ -156,10 +159,13 @@ services:
         networks:
             public_net:
                 ipv4_address: 192.168.71.151
+        dns:
+            - 8.8.8.8
+            - 1.1.1.1          
         devices:
              - /dev/net/tun:/dev/net/tun
         volumes:
-            - ../../conf_files/nrue.uicc.conf:/opt/oai-nr-ue/etc/nr-ue.conf
+            - ../../conf_files/nrue.uicc.yaml:/opt/oai-nr-ue/etc/nr-ue.yaml
         healthcheck:
             test: /bin/bash -c "pgrep nr-uesoftmodem"
             start_period: 10s
@@ -186,7 +192,7 @@ services:
         devices:
              - /dev/net/tun:/dev/net/tun
         volumes:
-            - ../../conf_files/nrue.uicc.conf:/opt/oai-nr-ue/etc/nr-ue.conf
+            - ../../conf_files/nrue.uicc.yaml:/opt/oai-nr-ue/etc/nr-ue.yaml
         healthcheck:
             test: /bin/bash -c "pgrep nr-uesoftmodem"
             start_period: 10s
@@ -383,7 +389,43 @@ services:
             interval: 10s
             timeout: 5s
             retries: 5
-
+    onos:
+        container_name: onos
+        image: onosproject/onos
+        restart: always
+        ports:
+            - "8181:8181"   # Web GUI & REST API
+            - "8101:8101"   # CLI over SSH
+            - "6653:6653"   # OpenFlow (new)
+            - "6633:6633"   # OpenFlow (legacy)
+        environment:
+            - ONOS_APPS=gui2,openflow,fwd
+        networks:
+            public_net:
+                ipv4_address: 192.168.71.160
+    ovs:
+      image: ubuntu:22.04
+      container_name: ovs
+      privileged: true
+      network_mode: host        # OVS needs to reach ONOS:6653 on the host
+      pid: host                 # lets us move veth ends into other containers
+      restart: unless-stopped
+      depends_on:
+        - rfsim5g-oai-upf
+        - rfsim5g-oai-ext-dn
+        - onos
+      environment:
+        UPF_CONT: "rfsim5g-oai-upf"
+        EDN_CONT: "rfsim5g-oai-ext-dn"
+        UPF_N6_IF: "eth1"          # UPF’s N6 interface in your compose
+        EDN_IF: "eth0"             # Ext-DN’s interface to traffic_net
+        ONOS_CTRL: "127.0.0.1:6653"  # onos port published on host
+    volumes:
+      - ./ovs-init.sh:/opt/ovs-init.sh:ro
+      - /lib/modules:/lib/modules:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: [ "bash", "-lc", "/opt/ovs-init.sh" ]
+             
 networks:
     public_net:
         driver: bridge
