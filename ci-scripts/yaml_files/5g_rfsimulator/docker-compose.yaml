@@ -404,28 +404,34 @@ services:
             public_net:
                 ipv4_address: 192.168.71.160
     ovs:
-      image: ubuntu:22.04
-      container_name: ovs
-      privileged: true
-      network_mode: host        # OVS needs to reach ONOS:6653 on the host
-      pid: host                 # lets us move veth ends into other containers
-      restart: unless-stopped
-      depends_on:
-        - rfsim5g-oai-upf
-        - rfsim5g-oai-ext-dn
-        - onos
-      environment:
-        UPF_CONT: "rfsim5g-oai-upf"
-        EDN_CONT: "rfsim5g-oai-ext-dn"
-        UPF_N6_IF: "eth1"          # UPF’s N6 interface in your compose
-        EDN_IF: "eth0"             # Ext-DN’s interface to traffic_net
-        ONOS_CTRL: "127.0.0.1:6653"  # onos port published on host
-    volumes:
-      - ./ovs-init.sh:/opt/ovs-init.sh:ro
-      - /lib/modules:/lib/modules:ro
-      - /var/run/docker.sock:/var/run/docker.sock
-    command: [ "bash", "-lc", "/opt/ovs-init.sh" ]
-             
+        image: openvswitch/ovs:2.12.0_debian
+        container_name: ovs
+        privileged: true
+        network_mode: host        # OVS needs to reach ONOS:6653 on the host
+        pid: host                 # lets us move veth ends into other containers
+        restart: unless-stopped
+        depends_on:
+           - oai-upf
+           - oai-ext-dn
+           - onos
+        environment:
+          UPF_CONT: "rfsim5g-oai-upf"
+          EDN_CONT: "rfsim5g-oai-ext-dn"
+          UPF_N6_IF: "eth1"          # UPF’s N6 interface in your compose
+          EDN_IF: "eth0"             # Ext-DN’s interface to traffic_net
+          ONOS_CTRL: "127.0.0.1:6653"  # onos port published on host
+        volumes:
+          - ./ovs-init.sh:/ovs-init.sh:ro
+          - /var/run/docker.sock:/var/run/docker.sock
+        entrypoint: ["/bin/bash","-lc"]  
+        command: >
+           bash -lc "
+           apt-get update -y &&
+           DEBIAN_FRONTEND=noninteractive apt-get install -y iproute2 docker.io &&
+           /usr/share/openvswitch/scripts/ovs-ctl start --system-id=random &&
+           /ovs-init.sh ||
+           tail -f /dev/null
+           "      
 networks:
     public_net:
         driver: bridge

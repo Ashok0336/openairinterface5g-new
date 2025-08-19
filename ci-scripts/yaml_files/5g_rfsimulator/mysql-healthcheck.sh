@@ -1,46 +1,23 @@
-#!/bin/bash
-set -eo pipefail
+#!/usr/bin/env bash
+set -euo pipefail
 
-if [ "$MYSQL_ROOT_PASSWORD" ] && [ -z "$MYSQL_USER" ] && [ -z "$MYSQL_PASSWORD" ]; then
-	echo >&2 'Healthcheck error: cannot determine root password (and MYSQL_USER and MYSQL_PASSWORD were not set)'
-	exit 0
-fi
+# Bridge + controller
+ovs-vsctl --may-exist add-br br-n6
+ovs-vsctl set-fail-mode br-n6 secure
+ovs-vsctl set-controller br-n6 tcp:${ONOS_CTRL:-127.0.0.1:6653}
 
-host="$(hostname --ip-address || echo '127.0.0.1')"
-user="${MYSQL_USER:-root}"
-export MYSQL_PWD="${MYSQL_PASSWORD:-$MYSQL_ROOT_PASSWORD}"
+# Rewire UPF_N6 and Ext-DN into br-n6 (keep same IPs)
+OVSDOCKER=/usr/share/openvswitch/scripts/ovs-docker
 
-args=(
-	# force mysql to not use the local "mysqld.sock" (test "external" connectivity)
-	-h"$host"
-	-u"$user"
-	--silent
-)
+docker exec ${UPF_CONT} ip addr flush dev ${UPF_N6_IF} || true
+docker exec ${UPF_CONT} ip link set  ${UPF_N6_IF} down || true
+docker exec ${EDN_CONT} ip addr flush dev ${EDN_IF}    || true
+docker exec ${EDN_CONT} ip link set  ${EDN_IF} down    || true
 
-STATUS=0
-if command -v mysqladmin &> /dev/null; then
-	if mysqladmin "${args[@]}" ping > /dev/null; then
-		database_check=$(mysql -u$user -D oai_db --silent -e "SELECT * FROM users;")
-		if [[ -z $database_check ]]; then
-			echo "Healthcheck error: oai_db not populated"
-			STATUS=1
-		fi
-		STATUS=0
-	else
-		echo "Healthcheck error: Mysql port inactive"
-		STATUS=1
-	fi
-else
-	if select="$(echo 'SELECT 1' | mysql "${args[@]}")" && [ "$select" = '1' ]; then
-		database_check=$(mysql -u$user -D oai_db --silent -e "SELECT * FROM users;")
-		if [[ -z $database_check ]]; then
-			echo "Healthcheck error: oai_db not populated"
-			STATUS=1
-		fi
-		STATUS=0
-	else
-		echo "Healthcheck error: Mysql port inactive"
-		STATUS=1
-	fi
-fi
-exit $STATUS
+${OVSDOCKER} del-port br-n6 n6-upf ${UPF_CONT} || true
+${OVSDOCKER} add-port br-n6 n6-upf ${UPF_CONT} --ipaddress=192.168.72.134/26
+
+${OVSDOCKER} del-port br-n6 n6-edn ${EDN_CONT} || true
+${OVSDOCKER} add-port br-n6 n6-edn ${EDN_CONT} --ipaddress=192.168.72.135/26
+
+echo "OVS br-n6 ready under ONOS."
