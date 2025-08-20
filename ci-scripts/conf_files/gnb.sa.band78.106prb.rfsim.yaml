@@ -59,6 +59,7 @@ gNBs:
         # 0=kHz15, 1=kHz30, 2=kHz60, 3=kHz120
         initialULBWPsubcarrierSpacing: 1
         #rach-ConfigCommon
+        prach_sequence_length: L139
         #rach-ConfigGeneric
         prach_ConfigurationIndex: 98
         #prach_msg1_FDM

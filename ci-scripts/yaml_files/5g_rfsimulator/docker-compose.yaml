@@ -418,20 +418,20 @@ services:
           UPF_CONT: "rfsim5g-oai-upf"
           EDN_CONT: "rfsim5g-oai-ext-dn"
           UPF_N6_IF: "eth1"          # UPF’s N6 interface in your compose
-          EDN_IF: "eth0"             # Ext-DN’s interface to traffic_net
+          EDN_IF: "dn0"             # Ext-DN’s interface to traffic_net
           ONOS_CTRL: "127.0.0.1:6653"  # onos port published on host
         volumes:
           - ./ovs-init.sh:/ovs-init.sh:ro
           - /var/run/docker.sock:/var/run/docker.sock
         entrypoint: ["/bin/bash","-lc"]  
         command: >
-           bash -lc "
+           set -Eeuo pipefail;
+           export DEBIAN_FRONTEND=noninteractive;
            apt-get update -y &&
-           DEBIAN_FRONTEND=noninteractive apt-get install -y iproute2 docker.io &&
-           /usr/share/openvswitch/scripts/ovs-ctl start --system-id=random &&
-           /ovs-init.sh ||
+           apt-get install -y iproute2 docker.io iputils-ping net-tools tcpdump &&
+           /usr/share/openvswitch/scripts/ovs-ctl start --system-id=random;
+           bash -x /ovs-init.sh 2>&1 | tee /var/log/ovs-init.log;
            tail -f /dev/null
-           "      
 networks:
     public_net:
         driver: bridge
